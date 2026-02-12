@@ -301,5 +301,32 @@
         } catch { /* href não é URL válida */ }
     }, true); // UseCapture = true é crucial aqui
 
+    // ---- [Camada 4] Bloqueio de Form Hijacking ----
+    document.addEventListener('submit', (e) => {
+        if (!isEnabled) return;
+
+        const form = e.target;
+        const action = form.getAttribute('action');
+
+        if (action) {
+            try {
+                const url = new URL(action, window.location.href);
+                if (url.origin !== window.location.origin) {
+                    if (isSuspiciousRedirect(action)) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        chrome.runtime.sendMessage({
+                            action: 'contentScriptBlocked',
+                            from: window.location.href,
+                            to: action,
+                            type: 'form_submit'
+                        });
+                        console.log('[No Redirect] Form submit bloqueado:', action);
+                    }
+                }
+            } catch (e) { }
+        }
+    }, true);
+
     console.log('[No Redirect] Content script ativo (Camadas 3 & 4) ✓');
 })();

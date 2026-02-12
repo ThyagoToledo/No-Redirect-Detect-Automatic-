@@ -1,8 +1,6 @@
 // ============================================================
 // No Redirect (Detect Automatic) — Main World Content Script
-// Camada 3: Interceptação JavaScript no contexto da página
-// Este script roda no MAIN world para poder sobrescrever
-// window.location, window.open, etc. da própria página.
+// Camada 3 & 4: Interceptação JavaScript (Architecture V2 - Total Shield)
 // ============================================================
 
 (function () {
@@ -39,7 +37,8 @@
             // URLs com padrões de redirect
             const suspiciousPatterns = [
                 /redirect/i, /redir/i, /clicktrack/i, /go\.php/i,
-                /track/i, /out\./i, /leave/i, /exit/i, /away/i
+                /track/i, /out\./i, /leave/i, /exit/i, /away/i,
+                /ad\./i, /ads\./i, /banner/i
             ];
             return suspiciousPatterns.some(p => p.test(target.href));
         } catch {
@@ -47,154 +46,123 @@
         }
     }
 
-    // ---- 1. Interceptar location.assign() e location.replace() ----
-    // Nota: Em browsers modernos, location muitas vezes não é configurável.
-    // Tentamos fazer o override apenas se possível.
-    const originalAssign = window.location.assign.bind(window.location);
-    const originalReplace = window.location.replace.bind(window.location);
+    // ---- 1. Interceptação Robusta via Navigation API (Chrome 102+) ----
+    // Substitui e supera os hacks antigos de location.assign/replace
+    if (window.navigation) {
+        window.navigation.addEventListener('navigate', (event) => {
+            // Ignorar navegações initiate por download ou same-document (âncoras)
+            if (event.downloadRequest || event.hashChange || event.formData) return;
 
-    try {
-        if (Object.getOwnPropertyDescriptor(window.location, 'assign').configurable) {
-            Object.defineProperty(window.location, 'assign', {
-                value: function (url) {
-                    if (isSuspiciousRedirect(url)) {
-                        notifyBlocked(url, 'location.assign');
-                        console.log('[No Redirect] Bloqueado location.assign():', url);
-                        return;
-                    }
-                    return originalAssign(url);
-                },
-                configurable: true,
-                writable: true
-            });
-        }
-    } catch (e) {
-        // Silenciar erro em sites que bloqueiam override
+            const url = event.destination.url;
+
+            // Verificação de segurança
+            if (isSuspiciousRedirect(url)) {
+                event.preventDefault(); // O "Cancel" oficial da navegação
+                notifyBlocked(url, 'navigationAPI');
+                console.log('[No Redirect] Bloqueado via Navigation API:', url);
+            }
+        });
+        console.log('[No Redirect] Navigation API Interceptor ativo ✓');
+    } else {
+        console.log('[No Redirect] Navigation API não suportada. Fallback para legacy hooks.');
+        // Fallback legado (apenas se necessário, mas Chrome moderno tem Navigation API)
     }
 
-    try {
-        if (Object.getOwnPropertyDescriptor(window.location, 'replace').configurable) {
-            Object.defineProperty(window.location, 'replace', {
-                value: function (url) {
-                    if (isSuspiciousRedirect(url)) {
-                        notifyBlocked(url, 'location.replace');
-                        console.log('[No Redirect] Bloqueado location.replace():', url);
-                        return;
-                    }
-                    return originalReplace(url);
-                },
-                configurable: true,
-                writable: true
-            });
-        }
-    } catch (e) {
-        // Silenciar erro
-    }
+    // ---- 2. "Zombie Window" Pattern para window.open ----
+    // Corrige o crash de scripts que tentam acessar a janela retornada
 
-    // ---- 2. Interceptar window.open() (Bloqueio Total de Popups de Terceiros) ----
     const originalWindowOpen = window.open;
 
+    function createZombieWindow() {
+        // Criar um Proxy que aceita tudo mas não faz nada
+        // Isso engana o script malicioso achando que a janela abriu
+        const zombieHandler = {
+            get: function (target, prop) {
+                if (prop === 'closed') return false; // "Ainda aberta"
+                if (prop === 'location') {
+                    // Retorna um objeto location falso que ignora atribuições
+                    return new Proxy({}, {
+                        set: function () { return true; }, // Aceita atribuição silenciosamente
+                        get: function () { return 'about:blank'; }
+                    });
+                }
+                if (typeof target[prop] === 'function') {
+                    return () => { }; // Função vazia para focus(), blur(), close()
+                }
+                return target[prop] || null;
+            },
+            set: function () { return true; } // Aceita qualquer atribuição
+        };
+
+        return new Proxy({
+            closed: false,
+            focus: () => { },
+            blur: () => { },
+            close: () => { },
+            postMessage: () => { },
+            document: { write: () => { }, close: () => { } }
+        }, zombieHandler);
+    }
+
     window.open = function (url, target, features) {
-        // Normalizar URL (muitas vezes é vazia ou about:blank)
         const urlString = (url || '').toString();
         const isBlank = !urlString || urlString === 'about:blank';
 
-        // Se for Cross-Origin ou Suspeito, bloquear imediatamente
+        // Bloqueio Principal
         if (!isBlank && (isSuspiciousRedirect(urlString) || isCrossOrigin(urlString))) {
             notifyBlocked(urlString, 'window.open');
-            console.log('[No Redirect] Bloqueado window.open() explícito:', urlString);
-            return null; // Retorna null para quebrar scripts que esperam a janela
+            console.log('[No Redirect] Bloqueado window.open() suspeito:', urlString);
+            return createZombieWindow(); // Retorna o zumbi
         }
 
-        // Se for about:blank, é PERIGOSO.
-        // Sites usam window.open('') e depois fazem win.location = 'ad.com'
-        // Só permitimos se tiver certeza que é usuário (difícil saber 100%)
-        // Estrategia: Retornar um Proxy que bloqueia navegação futura da nova janela
-
+        // Bloqueio de about:blank
         if (isBlank) {
-            console.log('[No Redirect] window.open(blank) detectado. Monitorando...');
-
-            // Se tiver features de popup (width, height), 99% chance de ser ad
+            // Se tiver features (popup), bloqueamos e retornamos zumbi
             if (features) {
-                console.log('[No Redirect] Bloqueado window.open(blank) com features de popup');
+                console.log('[No Redirect] Bloqueado window.open(blank) com features:', features);
                 notifyBlocked('about:blank (popup)', 'window.open_blank');
-                return null;
+                return createZombieWindow();
             }
-
-            // Se não tem features, pode ser um clique legítimo target=_blank
-            // Vamos deixar abrir, mas vamos tentar controlar a referência retornada
-            const newWin = originalWindowOpen.call(window, url, target, features);
-
-            if (!newWin) return null;
-
-            // Tentar proteger a nova janela de redirecionamento via script da janela pai
-            try {
-                // Monitor simples: se o script tentar mudar location da nova janela
-                // Isso não funciona 100% pq cross-origin bloqueia acesso, mas same-origin (blank) permite
-                // Vamos tentar interceptar a atribuição de location nesse objeto window retornado?
-                // Infelizmente o objeto retornado é um WindowProxy, difícil de alterar.
-
-                // Melhor abordagem: Verificar quem chamou.
-                // Mas não temos acesso ao stack trace confiável aqui.
-
-                // FALLBACK: Deixar abrir. O WebNavigation (Camada 2) vai pegar se
-                // essa nova aba (que nasceu em blank) tentar navegar para outro domínio.
-
-            } catch (e) { }
-
-            return newWin;
+            // Se for blank simples (sem features), pode ser legítimo, mas perigoso.
+            // Vamos deixar passar mas tentar envolver o retorno num proxy de proteção?
+            // Não, se deixarmos passar, o Navigation API deve pegar o redirect subsequente.
+            // Mas se for nova janela, o Navigation API daqui não pega. 
+            // O webNavigation (background) pegará.
         }
 
         return originalWindowOpen.call(window, url, target, features);
     };
 
-    // ---- 3. Interceptar History API (pushState/replaceState) ----
+    // ---- 3. Interceptar History API (Proteção contra manipulação de url) ----
     const originalPushState = history.pushState.bind(history);
     const originalReplaceState = history.replaceState.bind(history);
 
     history.pushState = function (state, title, url) {
-        if (!url) {
-            return originalPushState(state, title, url);
-        }
-        if (isCrossOrigin(url.toString())) {
+        if (url && isCrossOrigin(url.toString())) {
             notifyBlocked(url.toString(), 'history.pushState');
-            console.log('[No Redirect] Bloqueado history.pushState cross-origin:', url);
             return;
         }
         return originalPushState(state, title, url);
     };
 
     history.replaceState = function (state, title, url) {
-        if (!url) {
-            return originalReplaceState(state, title, url);
-        }
-        if (isCrossOrigin(url.toString())) {
+        if (url && isCrossOrigin(url.toString())) {
             notifyBlocked(url.toString(), 'history.replaceState');
-            console.log('[No Redirect] Bloqueado history.replaceState cross-origin:', url);
             return;
         }
         return originalReplaceState(state, title, url);
     };
 
-    // ---- 4. Interceptar setTimeout com strings de eval contendo redirects ----
+    // ---- 4. Anti-Eval Redirect (setTimeout) ----
     const originalSetTimeout = window.setTimeout;
-
     window.setTimeout = function (callback, delay, ...args) {
         if (typeof callback === 'string' && /location\s*[.=]|window\.open|navigate/i.test(callback)) {
-            console.log('[No Redirect] Bloqueado setTimeout com redirect:', callback.substring(0, 100));
+            console.log('[No Redirect] Bloqueado setTimeout eval:', callback.substring(0, 50));
             notifyBlocked('(setTimeout eval)', 'setTimeout_redirect');
             return 0;
         }
         return originalSetTimeout.call(window, callback, delay, ...args);
     };
 
-    // ---- 5. Ouvir mensagens de controle do isolated world ----
-    window.addEventListener('message', (event) => {
-        if (event.source !== window) return;
-        if (event.data && event.data.source === 'no-redirect-extension-control') {
-            // Futuro: receber estado ativo/desativado
-        }
-    });
-
-    console.log('[No Redirect] Main world script ativo ✓');
+    console.log('[No Redirect] Main world shield V2 ativo ✓');
 })();

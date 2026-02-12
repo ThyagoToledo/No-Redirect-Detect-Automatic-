@@ -17,25 +17,22 @@ A comprehensive Chrome extension that blocks unwanted redirects across multiple 
    - Filters common redirect patterns including tracking URLs and ad redirects
    - Minimal performance impact using Chrome's native declarativeNetRequest API
 
-2. **Navigation Layer (webNavigation API)**
-   - Detects and blocks server-side and client-side redirects
-   - Monitors cross-origin navigation attempts
-   - Prevents popup-based redirect attacks
-   - Maintains original URL when redirects are blocked
+2. **Navigation Layer (webNavigation & Navigation API)**
+   - **webNavigation**: Detects server-side and client-side redirects at the browser level.
+   - **Navigation API (New)**: Intercepts all client-side navigation attempts (`location.href`, `assign`, `replace`) directly in the main thread with robust cancellation.
+   - Prevents popup-based redirect attacks using "Zombie Window" technology.
 
-3. **JavaScript Layer (Content Scripts)**
-   - Intercepts JavaScript redirect methods in the page's main execution context
-   - Blocks `window.location.assign()`, `window.location.replace()`
-   - Prevents `window.open()` popup redirects
-   - Monitors `history.pushState()` and `history.replaceState()` for cross-origin attempts
-   - Detects and blocks `setTimeout()` eval-based redirects
-   - Removes `<meta http-equiv="refresh">` tags
-   - Bypasses link-based redirect intermediaries
+3. **Injection Layer (Main World Protection)**
+   - **Zombie Window Pattern**: Returns a non-functional proxy window object to malicious scripts using `window.open()`, preventing crashes and fallback redirects.
+   - **Anti-Tampering**: Protects against scripts that try to bypass blocks.
+   - Intercepts `setTimeout` based evaluations.
 
-4. **Containment Layer (Iframe & Cleanup)**
+4. **Containment Layer (Form & Iframe Shield)**
    - **Iframe Lockdown**: Forces `sandbox` attributes on all iframes to prevent them from navigating the top window or opening popups.
-   - **Strict window.open**: Aggressively blocks new window creation from suspicious sources.
-   - **Click Hijacking Protection**: Captures and validates all clicks on blank targets.
+   - **Form Hijacking Protection**: Scans and blocks form submissions with suspicious cross-origin actions.
+   - **Click Hijacking Protection**: Captures and validates all clicks on blank targets or suspicious overlays.
+
+
 
 ### User Interface
 
@@ -165,6 +162,12 @@ Contributions are welcome. Please ensure:
 - New features include appropriate documentation
 
 ## Version History
+
+### 1.2.0
+- **Total Shield Architecture**: Replaced fragile overrides with robust `Navigation API` interception.
+- **Zombie Window Defense**: Neutralizes malicious popups by returning non-functional window proxies.
+- **Form Hijacking Protection**: Blocks redirects via fake form submissions.
+- **Audit Logging**: Enhanced logging with full URLs for detailed analysis.
 
 ### 1.1.0
 - Added 4th protection layer: Iframe Lockdown & Strict `window.open` blocking

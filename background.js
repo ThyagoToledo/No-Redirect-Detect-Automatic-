@@ -72,6 +72,8 @@ async function recordBlock(tabId, from, to, type) {
     timestamp: new Date().toISOString(),
     from: truncateUrl(from),
     to: truncateUrl(to),
+    fullFrom: from,
+    fullTo: to,
     type: type,
     tabId: tabId
   };
