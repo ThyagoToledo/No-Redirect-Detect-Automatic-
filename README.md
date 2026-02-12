@@ -1,5 +1,11 @@
 # No Redirect (Detect Automatic)
 
+![JavaScript](https://img.shields.io/badge/javascript-%23323330.svg?style=for-the-badge&logo=javascript&logoColor=%23F7DF1E)
+![HTML5](https://img.shields.io/badge/html5-%23E34F26.svg?style=for-the-badge&logo=html5&logoColor=white)
+![CSS3](https://img.shields.io/badge/css3-%231572B6.svg?style=for-the-badge&logo=css3&logoColor=white)
+![Google Chrome](https://img.shields.io/badge/Google%20Chrome-%234285F4.svg?style=for-the-badge&logo=Google-Chrome&logoColor=white)
+![Manifest V3](https://img.shields.io/badge/Manifest%20V3-Check-green?style=for-the-badge)
+
 A comprehensive Chrome extension that blocks unwanted redirects across multiple layers of web navigation. This extension provides automatic protection against network-level redirects, JavaScript-based redirects, meta refresh tags, and popup redirects.
 
 ## Features
@@ -25,6 +31,11 @@ A comprehensive Chrome extension that blocks unwanted redirects across multiple 
    - Detects and blocks `setTimeout()` eval-based redirects
    - Removes `<meta http-equiv="refresh">` tags
    - Bypasses link-based redirect intermediaries
+
+4. **Containment Layer (Iframe & Cleanup)**
+   - **Iframe Lockdown**: Forces `sandbox` attributes on all iframes to prevent them from navigating the top window or opening popups.
+   - **Strict window.open**: Aggressively blocks new window creation from suspicious sources.
+   - **Click Hijacking Protection**: Captures and validates all clicks on blank targets.
 
 ### User Interface
 
@@ -154,6 +165,11 @@ Contributions are welcome. Please ensure:
 - New features include appropriate documentation
 
 ## Version History
+
+### 1.1.0
+- Added 4th protection layer: Iframe Lockdown & Strict `window.open` blocking
+- Fixed issue with redirects spawning new windows
+- Enhanced ad-overlay detection
 
 ### 1.0.0
 - Initial release

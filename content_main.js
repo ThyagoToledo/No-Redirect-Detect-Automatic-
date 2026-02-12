@@ -48,64 +48,101 @@
     }
 
     // ---- 1. Interceptar location.assign() e location.replace() ----
+    // Nota: Em browsers modernos, location muitas vezes não é configurável.
+    // Tentamos fazer o override apenas se possível.
     const originalAssign = window.location.assign.bind(window.location);
     const originalReplace = window.location.replace.bind(window.location);
 
     try {
-        Object.defineProperty(window.location, 'assign', {
-            value: function (url) {
-                if (isSuspiciousRedirect(url)) {
-                    notifyBlocked(url, 'location.assign');
-                    console.log('[No Redirect] Bloqueado location.assign():', url);
-                    return;
-                }
-                return originalAssign(url);
-            },
-            configurable: true,
-            writable: true
-        });
+        if (Object.getOwnPropertyDescriptor(window.location, 'assign').configurable) {
+            Object.defineProperty(window.location, 'assign', {
+                value: function (url) {
+                    if (isSuspiciousRedirect(url)) {
+                        notifyBlocked(url, 'location.assign');
+                        console.log('[No Redirect] Bloqueado location.assign():', url);
+                        return;
+                    }
+                    return originalAssign(url);
+                },
+                configurable: true,
+                writable: true
+            });
+        }
     } catch (e) {
-        console.log('[No Redirect] Não foi possível interceptar location.assign (read-only)');
+        // Silenciar erro em sites que bloqueiam override
     }
 
     try {
-        Object.defineProperty(window.location, 'replace', {
-            value: function (url) {
-                if (isSuspiciousRedirect(url)) {
-                    notifyBlocked(url, 'location.replace');
-                    console.log('[No Redirect] Bloqueado location.replace():', url);
-                    return;
-                }
-                return originalReplace(url);
-            },
-            configurable: true,
-            writable: true
-        });
+        if (Object.getOwnPropertyDescriptor(window.location, 'replace').configurable) {
+            Object.defineProperty(window.location, 'replace', {
+                value: function (url) {
+                    if (isSuspiciousRedirect(url)) {
+                        notifyBlocked(url, 'location.replace');
+                        console.log('[No Redirect] Bloqueado location.replace():', url);
+                        return;
+                    }
+                    return originalReplace(url);
+                },
+                configurable: true,
+                writable: true
+            });
+        }
     } catch (e) {
-        console.log('[No Redirect] Não foi possível interceptar location.replace (read-only)');
+        // Silenciar erro
     }
 
-    // ---- 2. Interceptar window.open() ----
+    // ---- 2. Interceptar window.open() (Bloqueio Total de Popups de Terceiros) ----
     const originalWindowOpen = window.open;
 
     window.open = function (url, target, features) {
-        // Permitir about:blank e URLs sem valor
-        if (!url || url === 'about:blank') {
-            return originalWindowOpen.call(window, url, target, features);
+        // Normalizar URL (muitas vezes é vazia ou about:blank)
+        const urlString = (url || '').toString();
+        const isBlank = !urlString || urlString === 'about:blank';
+
+        // Se for Cross-Origin ou Suspeito, bloquear imediatamente
+        if (!isBlank && (isSuspiciousRedirect(urlString) || isCrossOrigin(urlString))) {
+            notifyBlocked(urlString, 'window.open');
+            console.log('[No Redirect] Bloqueado window.open() explícito:', urlString);
+            return null; // Retorna null para quebrar scripts que esperam a janela
         }
 
-        if (isCrossOrigin(url)) {
-            notifyBlocked(url, 'window.open');
-            console.log('[No Redirect] Bloqueado window.open():', url);
-            // Retornar um objeto window-like falso para não quebrar scripts
-            return {
-                closed: true,
-                close: function () { },
-                focus: function () { },
-                blur: function () { },
-                postMessage: function () { },
-                document: { write: function () { }, close: function () { } }
-            };
+        // Se for about:blank, é PERIGOSO.
+        // Sites usam window.open('') e depois fazem win.location = 'ad.com'
+        // Só permitimos se tiver certeza que é usuário (difícil saber 100%)
+        // Estrategia: Retornar um Proxy que bloqueia navegação futura da nova janela
+
+        if (isBlank) {
+            console.log('[No Redirect] window.open(blank) detectado. Monitorando...');
+
+            // Se tiver features de popup (width, height), 99% chance de ser ad
+            if (features) {
+                console.log('[No Redirect] Bloqueado window.open(blank) com features de popup');
+                notifyBlocked('about:blank (popup)', 'window.open_blank');
+                return null;
+            }
+
+            // Se não tem features, pode ser um clique legítimo target=_blank
+            // Vamos deixar abrir, mas vamos tentar controlar a referência retornada
+            const newWin = originalWindowOpen.call(window, url, target, features);
+
+            if (!newWin) return null;
+
+            // Tentar proteger a nova janela de redirecionamento via script da janela pai
+            try {
+                // Monitor simples: se o script tentar mudar location da nova janela
+                // Isso não funciona 100% pq cross-origin bloqueia acesso, mas same-origin (blank) permite
+                // Vamos tentar interceptar a atribuição de location nesse objeto window retornado?
+                // Infelizmente o objeto retornado é um WindowProxy, difícil de alterar.
+
+                // Melhor abordagem: Verificar quem chamou.
+                // Mas não temos acesso ao stack trace confiável aqui.
+
+                // FALLBACK: Deixar abrir. O WebNavigation (Camada 2) vai pegar se
+                // essa nova aba (que nasceu em blank) tentar navegar para outro domínio.
+
+            } catch (e) { }
+
+            return newWin;
         }
 
         return originalWindowOpen.call(window, url, target, features);
