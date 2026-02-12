@@ -51,23 +51,39 @@
     const originalAssign = window.location.assign.bind(window.location);
     const originalReplace = window.location.replace.bind(window.location);
 
-    window.location.assign = function (url) {
-        if (isSuspiciousRedirect(url)) {
-            notifyBlocked(url, 'location.assign');
-            console.log('[No Redirect] Bloqueado location.assign():', url);
-            return;
-        }
-        return originalAssign(url);
-    };
+    try {
+        Object.defineProperty(window.location, 'assign', {
+            value: function (url) {
+                if (isSuspiciousRedirect(url)) {
+                    notifyBlocked(url, 'location.assign');
+                    console.log('[No Redirect] Bloqueado location.assign():', url);
+                    return;
+                }
+                return originalAssign(url);
+            },
+            configurable: true,
+            writable: true
+        });
+    } catch (e) {
+        console.log('[No Redirect] Não foi possível interceptar location.assign (read-only)');
+    }
 
-    window.location.replace = function (url) {
-        if (isSuspiciousRedirect(url)) {
-            notifyBlocked(url, 'location.replace');
-            console.log('[No Redirect] Bloqueado location.replace():', url);
-            return;
-        }
-        return originalReplace(url);
-    };
+    try {
+        Object.defineProperty(window.location, 'replace', {
+            value: function (url) {
+                if (isSuspiciousRedirect(url)) {
+                    notifyBlocked(url, 'location.replace');
+                    console.log('[No Redirect] Bloqueado location.replace():', url);
+                    return;
+                }
+                return originalReplace(url);
+            },
+            configurable: true,
+            writable: true
+        });
+    } catch (e) {
+        console.log('[No Redirect] Não foi possível interceptar location.replace (read-only)');
+    }
 
     // ---- 2. Interceptar window.open() ----
     const originalWindowOpen = window.open;
