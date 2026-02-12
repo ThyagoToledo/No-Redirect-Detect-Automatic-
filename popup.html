@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>No Redirect</title>
+  <link rel="stylesheet" href="popup.css">
+  <!-- Fonts loaded via system stack (Inter, -apple-system, sans-serif) -->
+</head>
+
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <div class="logo">
+        <div class="shield-icon" id="shieldIcon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            <polyline points="9 12 11 14 15 10" class="shield-check" />
+          </svg>
+        </div>
+        <div class="title-group">
+          <h1>No Redirect</h1>
+          <span class="subtitle">Detect Automatic</span>
+        </div>
+      </div>
+      <div class="toggle-wrapper">
+        <label class="toggle" id="toggleLabel">
+          <input type="checkbox" id="toggleSwitch" checked>
+          <span class="toggle-slider">
+            <span class="toggle-thumb"></span>
+          </span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Status -->
+    <div class="status-bar" id="statusBar">
+      <div class="status-dot" id="statusDot"></div>
+      <span class="status-text" id="statusText">Proteção ativa</span>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats">
+      <div class="stat-card">
+        <div class="stat-number" id="sessionCount">0</div>
+        <div class="stat-label">Esta sessão</div>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat-card">
+        <div class="stat-number" id="totalCount">0</div>
+        <div class="stat-label">Total bloqueados</div>
+      </div>
+    </div>
+
+    <!-- Recent blocks -->
+    <div class="recent-section">
+      <div class="recent-header">
+        <h2>Bloqueios recentes</h2>
+        <button class="clear-btn" id="clearBtn" title="Limpar histórico">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+          </svg>
+        </button>
+      </div>
+      <div class="recent-list" id="recentList">
+        <div class="empty-state">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+            stroke-linecap="round" stroke-linejoin="round" opacity="0.4">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          </svg>
+          <p>Nenhum redirect bloqueado ainda</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <span>🛡️ 3 camadas de proteção ativas</span>
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+
+</html>
