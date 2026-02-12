@@ -142,7 +142,40 @@
 
             const iframes = node.querySelectorAll('iframe');
             iframes.forEach(enforceSandbox);
+
+            // Check overlays in subtree (cleanup)
+            const overlays = node.querySelectorAll('div[style*="z-index"], div[style*="position: fixed"]');
+            overlays.forEach(checkOverlay);
         }
+
+        // Verificar o próprio nó
+        if (node.nodeName === 'DIV') {
+            checkOverlay(node);
+        }
+    }
+
+    // ---- [Camada 5] UI Shield: Overlay Cleanup (Mutation Observer) ----
+    function checkOverlay(node) {
+        if (!isEnabled || node.nodeName !== 'DIV') return;
+
+        // Otimização: só checar se tiver style inline (muito comum nesses overlays)
+        // ou IDs suspeitos
+        if (!node.hasAttribute('style') && !node.id) return;
+
+        try {
+            // Checagem rápida por estilo inline antes de computar estilo (caro)
+            const inlineStyle = node.getAttribute('style') || '';
+            if (inlineStyle.includes('fixed') || inlineStyle.includes('absolute')) {
+                // Agora sim, checar propriedades computadas se necessário, ou confiar no inline
+                // O elemento do usuário tinha z-index 2147483647
+                if (inlineStyle.includes('2147483647') || (node.style.zIndex && parseInt(node.style.zIndex) > 100000)) {
+                    // Verificar se cobre a tela?
+                    // Se tem z-index máximo e é fixed/absolute, é 99% lixo de ad ou overlay impeditivo
+                    console.log('[No Redirect] Overlay agressivo detectado e removido (Mutation):', node);
+                    node.remove();
+                }
+            }
+        } catch (e) { }
     }
 
     // MutationObserver para detectar meta tags e iframes inseridos dinamicamente
@@ -195,16 +228,26 @@
         }
 
         // Verificar se clicou em um elemento "estranho" (ex: div flutuante transparente)
-        // Heurística: div absoluto/fixo, z-index alto, opacidade 0 ou quase 0
+        // Heurística Hardened: div absoluto/fixo, z-index extremo, opacidade 0 ou transparente
         try {
             const style = window.getComputedStyle(e.target);
-            if (style.position === 'absolute' || style.position === 'fixed') {
-                if (style.opacity < 0.1 || style.visibility === 'hidden') {
-                    console.log('[No Redirect] Clique em overlay invisível detectado');
+
+            // Caso específico reportado: ID="dontfoid" ou similares com z-index máximo
+            const zIndex = parseInt(style.zIndex);
+            const isHighZ = !isNaN(zIndex) && zIndex > 100000;
+
+            if (isHighZ && (style.position === 'absolute' || style.position === 'fixed')) {
+                const isTransparent = style.opacity < 0.1 || style.visibility === 'hidden' || style.backgroundColor === 'rgba(0, 0, 0, 0)' || style.backgroundColor === 'transparent';
+
+                if (isTransparent) {
+                    console.log('[No Redirect] Clique em overlay invisível (High-Z) detectado');
                     e.preventDefault();
                     e.stopPropagation();
+                    // Remover o elemento maligno imediatamente
+                    if (e.target.parentNode) e.target.remove();
                     return;
                 }
+
                 // Outro caso: div vazio cobrindo tela
                 if (e.target.tagName === 'DIV' &&
                     e.target.childNodes.length === 0 &&
@@ -214,7 +257,6 @@
                     console.log('[No Redirect] Clique em overlay gigante vazio detectado');
                     e.preventDefault();
                     e.stopPropagation();
-                    // Tentar remover o overlay
                     e.target.remove();
                     return;
                 }
@@ -223,13 +265,24 @@
 
         // Verificar se é um clique fake/simulado por script
         if (!e.isTrusted) {
-            // Cliques simulados em links para fora são suspeitos
+            // Cliques simulados em links para fora OU vazios (about:blank) são suspeitos
             const target = e.target.closest('a');
-            if (target && target.href) {
-                console.log('[No Redirect] Clique simulado detectado e bloqueado:', target.href);
-                e.stopPropagation();
-                e.preventDefault();
-                return;
+            if (target) {
+                const h = target.getAttribute('href');
+                // Adscore usa href="about:blank" ou href="" e clica via script
+                if (!h || h === '#' || h === 'about:blank' || h.trim() === '') {
+                    console.log('[No Redirect] Clique simulado em link vazio/blank detectado e bloqueado');
+                    e.stopPropagation();
+                    e.preventDefault();
+                    return;
+                }
+
+                if (target.href) {
+                    console.log('[No Redirect] Clique simulado detectado e bloqueado:', target.href);
+                    e.stopPropagation();
+                    e.preventDefault();
+                    return;
+                }
             }
         }
 
@@ -328,5 +381,5 @@
         }
     }, true);
 
-    console.log('[No Redirect] Content script ativo (Camadas 3 & 4) ✓');
+    console.log('[No Redirect] Content script ativo (Camadas 3, 4 & 5) ✓');
 })();

@@ -6,11 +6,11 @@
 ![Google Chrome](https://img.shields.io/badge/Google%20Chrome-%234285F4.svg?style=for-the-badge&logo=Google-Chrome&logoColor=white)
 ![Manifest V3](https://img.shields.io/badge/Manifest%20V3-Check-green?style=for-the-badge)
 
-A comprehensive Chrome extension that blocks unwanted redirects across multiple layers of web navigation. This extension provides automatic protection against network-level redirects, JavaScript-based redirects, meta refresh tags, and popup redirects.
+A comprehensive Chrome extension that blocks unwanted redirects across **five** layers of web navigation. This extension provides automatic protection against network-level redirects, JavaScript-based redirects, meta refresh tags, popup redirects, and UI clickjacking.
 
 ## Features
 
-### Three-Layer Protection System
+### Five-Layer Protection System
 
 1. **Network Layer (declarativeNetRequest)**
    - Blocks redirect requests at the network level before they execute
@@ -19,8 +19,7 @@ A comprehensive Chrome extension that blocks unwanted redirects across multiple 
 
 2. **Navigation Layer (webNavigation & Navigation API)**
    - **webNavigation**: Detects server-side and client-side redirects at the browser level.
-   - **Navigation API (New)**: Intercepts all client-side navigation attempts (`location.href`, `assign`, `replace`) directly in the main thread with robust cancellation.
-   - Prevents popup-based redirect attacks using "Zombie Window" technology.
+   - **Navigation API**: Intercepts all client-side navigation attempts (`location.href`, `assign`, `replace`) directly in the main thread with robust cancellation.
 
 3. **Injection Layer (Main World Protection)**
    - **Zombie Window Pattern**: Returns a non-functional proxy window object to malicious scripts using `window.open()`, preventing crashes and fallback redirects.
@@ -30,7 +29,11 @@ A comprehensive Chrome extension that blocks unwanted redirects across multiple 
 4. **Containment Layer (Form & Iframe Shield)**
    - **Iframe Lockdown**: Forces `sandbox` attributes on all iframes to prevent them from navigating the top window or opening popups.
    - **Form Hijacking Protection**: Scans and blocks form submissions with suspicious cross-origin actions.
-   - **Click Hijacking Protection**: Captures and validates all clicks on blank targets or suspicious overlays.
+
+5. **UI Shield (Interaction Protection)**
+   - **Overlay Buster**: Uses MutationObservers to detect and instantly remove invisible "curtains" (overlays) used for clickjacking.
+   - **Click Forensics**: Analyzes every click to ensure it's not a simulated script click (`isTrusted: false`) or targeting a hidden element.
+   - **Anti-Tab-Under**: Prevents rapid focus switching tricks used by popups.
 
 
 
@@ -162,6 +165,11 @@ Contributions are welcome. Please ensure:
 - New features include appropriate documentation
 
 ## Version History
+
+### 1.3.0
+- **5-Layer Architecture**: Officially separated "UI Shield" and "Containment" layers.
+- **Overlay Buster**: Advanced "Invisible Curtain" detection and removal.
+- **Click Forensics**: Enhanced protection against simulated clicks on empty links.
 
 ### 1.2.0
 - **Total Shield Architecture**: Replaced fragile overrides with robust `Navigation API` interception.
