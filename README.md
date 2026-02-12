@@ -33,6 +33,7 @@ A comprehensive Chrome extension that blocks unwanted redirects across **five** 
 5. **UI Shield (Interaction Protection)**
    - **Overlay Buster**: Uses MutationObservers to detect and instantly remove invisible "curtains" (overlays) used for clickjacking.
    - **Click Forensics**: Analyzes every click to ensure it's not a simulated script click (`isTrusted: false`) or targeting a hidden element.
+   - **Safe Navigation Guard**: Filters clicks on internal navigation links (pagination, next episode) to strip malicious event listeners while allowing legitimate navigation.
    - **Anti-Tab-Under**: Prevents rapid focus switching tricks used by popups.
 
 
@@ -165,6 +166,12 @@ Contributions are welcome. Please ensure:
 - New features include appropriate documentation
 
 ## Version History
+
+### 1.3.2
+- **Enhanced Navigation Guard**: Now intercepts `mousedown` and `mouseup` events to prevent ad scripts from hijacking clicks before they happen.
+
+### 1.3.1
+- **Safe Navigation Enforcement**: Detects and protects legitimate navigation clicks (pagination) from being hijacked by ad scripts.
 
 ### 1.3.0
 - **5-Layer Architecture**: Officially separated "UI Shield" and "Containment" layers.

@@ -213,6 +213,48 @@
         iframes.forEach(enforceSandbox);
     });
 
+    // ---- [Camada 5] Clean Click Enforcer (Impositor de Clique Limpo) ----
+    // Executa na fase de CAPTURA (descendo na DOM), antes de qualquer outro evento.
+    // Agora interceptamos mousedown/mouseup também para evitar que scripts de ad
+    // (que rodam nesses eventos) abram popups antes do click.
+    ['click', 'mousedown', 'mouseup'].forEach(eventType => {
+        window.addEventListener(eventType, (e) => {
+            if (!isEnabled) return;
+
+            const target = e.target.closest('a');
+            if (!target) return;
+
+            const href = target.getAttribute('href');
+            if (!href) return;
+
+            // Lógica para identificar "Navegação Segura" (Paginação, Próximo Episódio)
+            const isPagination = target.classList.contains('page-link') ||
+                target.querySelector('.prox') ||
+                /page-link|pagination|next|prev/i.test(target.className);
+
+            const isInternalNav = href.startsWith('/') ||
+                (!href.startsWith('http') && !href.startsWith('//') && !href.startsWith('#'));
+
+            // Se for link seguro de navegação
+            if ((isPagination || isInternalNav) && target.target !== '_blank') {
+                // Ignorar links falsos
+                if (href === '#' || href.toLowerCase() === 'about:blank') return;
+
+                // Apenas logar no click para não spammar
+                if (eventType === 'click') {
+                    console.log(`[No Redirect] Clean Click (${eventType}) -> Protegendo navegação para:`, href);
+                }
+
+                // Mata listeners do site (Ads que usam mousedown/up)
+                e.stopImmediatePropagation();
+                e.stopPropagation();
+
+                // NÃO impedimos o default do click (navegação)
+                return;
+            }
+        }, true); // TRUE = Capture Phase
+    });
+
     // ---- [Camada 4] Bloqueio avançado de cliques (Captura) ----
     // Usamos capture=true para pegar o evento antes de qualquer script da página
     window.addEventListener('click', (e) => {
