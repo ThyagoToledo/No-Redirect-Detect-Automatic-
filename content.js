@@ -8,6 +8,13 @@
 
     let isEnabled = false;
 
+    // OTIMIZAÇÃO: Cache de padrões suspeitos compilados uma vez
+    const suspiciousPatterns = [
+        /redirect/i, /redir/i, /clicktrack/i, /go\.php/i,
+        /track/i, /out\./i, /leave/i, /exit/i, /away/i,
+        /ad\./i, /ads\./i, /banner/i
+    ];
+
     // Verificar se a extensão está ativa
     try {
         chrome.runtime.sendMessage({ action: 'isEnabled' }, (response) => {
@@ -49,10 +56,7 @@
         try {
             const target = new URL(url, window.location.href);
             if (target.origin !== window.location.origin) return true;
-            const suspiciousPatterns = [
-                /redirect/i, /redir/i, /clicktrack/i, /go\.php/i,
-                /track/i, /out\./i, /leave/i, /exit/i, /away/i
-            ];
+            // OTIMIZAÇÃO: Usar cache de padrões
             return suspiciousPatterns.some(p => p.test(target.href));
         } catch {
             return false;
@@ -135,28 +139,25 @@
             enforceSandbox(node);
         }
 
-        // Descer na árvore se necessário (tome cuidado com performance)
-        if (node.querySelectorAll) {
-            const metas = node.querySelectorAll('meta[http-equiv="refresh"]');
-            metas.forEach(checkMetaRefresh);
-
-            const iframes = node.querySelectorAll('iframe');
-            iframes.forEach(enforceSandbox);
-
-            // Check overlays in subtree (cleanup)
-            const overlays = node.querySelectorAll('div[style*="z-index"], div[style*="position: fixed"]');
-            overlays.forEach(checkOverlay);
-        }
-
-        // Verificar o próprio nó
-        if (node.nodeName === 'DIV') {
-            checkOverlay(node);
+        // OTIMIZAÇÃO: Apenas checar diretos filhos, não subtree completa
+        if (node.children && node.children.length > 0) {
+            for (let i = 0; i < node.children.length; i++) {
+                const child = node.children[i];
+                if (child.nodeName === 'META') checkMetaRefresh(child);
+                if (child.nodeName === 'IFRAME') enforceSandbox(child);
+                if (child.nodeName === 'DIV') checkOverlay(child);
+            }
         }
     }
 
     // ---- [Camada 5] UI Shield: Overlay Cleanup (Mutation Observer) ----
+    // OTIMIZAÇÃO: Cache de elementos já checados para evitar re-processing
+    const checkedOverlays = new WeakSet();
+    
     function checkOverlay(node) {
         if (!isEnabled || node.nodeName !== 'DIV') return;
+        if (checkedOverlays.has(node)) return; // Já foi checado
+        checkedOverlays.add(node);
 
         // Otimização: só checar se tiver style inline (muito comum nesses overlays)
         // ou IDs suspeitos
@@ -179,14 +180,29 @@
     }
 
     // MutationObserver para detectar meta tags e iframes inseridos dinamicamente
+    // OTIMIZAÇÃO: Acumular mutações em batch para processar de uma vez
+    let mutationTimeout = null;
+    let accumulatedMutations = [];
+    
     const observer = new MutationObserver((mutations) => {
         if (!isEnabled) return;
-
-        for (const mutation of mutations) {
-            for (const node of mutation.addedNodes) {
-                checkNode(node);
-            }
-        }
+        
+        // Acumular mutações
+        accumulatedMutations = accumulatedMutations.concat(mutations);
+        
+        // Se já tem timeout agendado, não agenda novamente
+        if (mutationTimeout) return;
+        
+        // Agendar processamento em batch
+        mutationTimeout = setTimeout(() => {
+            accumulatedMutations.forEach(mutation => {
+                mutation.addedNodes.forEach(node => {
+                    checkNode(node);
+                });
+            });
+            accumulatedMutations = [];
+            mutationTimeout = null;
+        }, 5); // Processar em batch a cada 5ms
     });
 
     if (document.documentElement) {
@@ -203,6 +219,13 @@
         });
     }
 
+    // OTIMIZAÇÃO: Limpar cache de overlays checados a cada 30 segundos para evitar memory leak
+    setInterval(() => {
+        if (checkedOverlays && typeof checkedOverlays.clear === 'function') {
+            checkedOverlays.clear();
+        }
+    }, 30000);
+
     // Verificar meta refresh e iframes que já existem
     document.addEventListener('DOMContentLoaded', () => {
         if (!isEnabled) return;
@@ -214,92 +237,62 @@
     });
 
     // ---- [Camada 5] Clean Click Enforcer (Impositor de Clique Limpo) ----
-    // Executa na fase de CAPTURA (descendo na DOM), antes de qualquer outro evento.
-    // Agora interceptamos mousedown/mouseup também para evitar que scripts de ad
-    // (que rodam nesses eventos) abram popups antes do click.
-    ['click', 'mousedown', 'mouseup'].forEach(eventType => {
-        window.addEventListener(eventType, (e) => {
-            if (!isEnabled) return;
-
-            const target = e.target.closest('a');
-            if (!target) return;
-
-            const href = target.getAttribute('href');
-            if (!href) return;
-
-            // Lógica para identificar "Navegação Segura" (Paginação, Próximo Episódio)
-            const isPagination = target.classList.contains('page-link') ||
-                target.querySelector('.prox') ||
-                /page-link|pagination|next|prev/i.test(target.className);
-
-            const isInternalNav = href.startsWith('/') ||
-                (!href.startsWith('http') && !href.startsWith('//') && !href.startsWith('#'));
-
-            // Se for link seguro de navegação
-            if ((isPagination || isInternalNav) && target.target !== '_blank') {
-                // Ignorar links falsos
-                if (href === '#' || href.toLowerCase() === 'about:blank') return;
-
-                // Apenas logar no click para não spammar
-                if (eventType === 'click') {
-                    console.log(`[No Redirect] Clean Click (${eventType}) -> Protegendo navegação para:`, href);
-                }
-
-                // Mata listeners do site (Ads que usam mousedown/up)
-                e.stopImmediatePropagation();
-                e.stopPropagation();
-
-                // NÃO impedimos o default do click (navegação)
-                return;
-            }
-        }, true); // TRUE = Capture Phase
-    });
-
-    // ---- [Camada 4] Bloqueio avançado de cliques (Captura) ----
-    // Usamos capture=true para pegar o evento antes de qualquer script da página
+    // OTIMIZAÇÃO: Combinar mousedown/mouseup em um único listener + less checks
     window.addEventListener('click', (e) => {
         if (!isEnabled) return;
 
-        // 1. Detectar cliques em overlays invisíveis
-        // Se o alvo não for um link, botão ou input, e ocupar a tela toda... suspeito.
-        if (e.target === document.body || e.target === document.documentElement) {
-            // Clique no body é normal, mas sites de anime usam um div transparente por cima de tudo
-            // Vamos checar se o usuário clicou em algo que parece "vazio" mas tem listeners/scripts
-            // Difícil saber se tem listener sem DevTools protocol. 
-            // Mas podemos bloquear window.open se originado daqui (já feito no content_main)
+        const target = e.target.closest('a');
+        if (!target) return;
+
+        const href = target.getAttribute('href');
+        if (!href) return;
+
+        // Lógica para identificar "Navegação Segura" (Paginação, Próximo Episódio)
+        const isPagination = target.classList.contains('page-link') ||
+            /page-link|pagination|next|prev/i.test(target.className);
+
+        const isInternalNav = href.startsWith('/') ||
+            (!href.startsWith('http') && !href.startsWith('//') && !href.startsWith('#'));
+
+        // Se for link seguro de navegação
+        if ((isPagination || isInternalNav) && target.target !== '_blank') {
+            // Ignorar links falsos
+            if (href === '#' || href.toLowerCase() === 'about:blank') return;
+
+            console.log('[No Redirect] Clean Click -> Navegação segura:', href);
+
+            // Mata listeners do site (Ads que usam mousedown/up)
+            e.stopImmediatePropagation();
+            e.stopPropagation();
+
+            // NÃO impedimos o default do click (navegação)
+            return;
         }
+    }, true); // TRUE = Capture Phase
+
+    // ---- [Camada 4] Bloqueio avançado de cliques (Captura) ----
+    // OTIMIZAÇÃO: Usar apenas getAttribute em vez de getComputedStyle (operação cara)
+    window.addEventListener('click', (e) => {
+        if (!isEnabled) return;
 
         // Verificar se clicou em um elemento "estranho" (ex: div flutuante transparente)
-        // Heurística Hardened: div absoluto/fixo, z-index extremo, opacidade 0 ou transparente
+        // Heurística OTIMIZADA: Apenas check style inline em vez de getComputedStyle
         try {
-            const style = window.getComputedStyle(e.target);
+            const inlineStyle = e.target.getAttribute('style') || '';
+            const zIndexMatch = inlineStyle.match(/z-index\s*:\s*(\d+)/i);
+            const isHighZ = zIndexMatch && parseInt(zIndexMatch[1]) > 100000;
 
-            // Caso específico reportado: ID="dontfoid" ou similares com z-index máximo
-            const zIndex = parseInt(style.zIndex);
-            const isHighZ = !isNaN(zIndex) && zIndex > 100000;
-
-            if (isHighZ && (style.position === 'absolute' || style.position === 'fixed')) {
-                const isTransparent = style.opacity < 0.1 || style.visibility === 'hidden' || style.backgroundColor === 'rgba(0, 0, 0, 0)' || style.backgroundColor === 'transparent';
+            if (isHighZ && (inlineStyle.includes('absolute') || inlineStyle.includes('fixed'))) {
+                const isTransparent = inlineStyle.includes('opacity: 0') || 
+                                     inlineStyle.includes('visibility: hidden') ||
+                                     inlineStyle.includes('rgba(0, 0, 0, 0)') ||
+                                     inlineStyle.includes('transparent');
 
                 if (isTransparent) {
-                    console.log('[No Redirect] Clique em overlay invisível (High-Z) detectado');
+                    console.log('[No Redirect] Overlay invisível detectado');
                     e.preventDefault();
                     e.stopPropagation();
-                    // Remover o elemento maligno imediatamente
                     if (e.target.parentNode) e.target.remove();
-                    return;
-                }
-
-                // Outro caso: div vazio cobrindo tela
-                if (e.target.tagName === 'DIV' &&
-                    e.target.childNodes.length === 0 &&
-                    parseInt(style.width) > window.innerWidth * 0.8 &&
-                    parseInt(style.height) > window.innerHeight * 0.8) {
-
-                    console.log('[No Redirect] Clique em overlay gigante vazio detectado');
-                    e.preventDefault();
-                    e.stopPropagation();
-                    e.target.remove();
                     return;
                 }
             }

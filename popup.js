@@ -70,11 +70,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ---- Animação de números ----
+    // OTIMIZAÇÃO: Reduzir duração e usar requestAnimationFrame com throttle
     function animateNumber(element, target) {
         const current = parseInt(element.textContent) || 0;
         if (current === target) return;
 
-        const duration = 600;
+        // Se diferença muito pequena, só atualizar
+        if (Math.abs(target - current) <= 1) {
+            element.textContent = target;
+            return;
+        }
+
+        const duration = 300; // Reduzido de 600ms - mais rápido
         const start = performance.now();
 
         function step(timestamp) {

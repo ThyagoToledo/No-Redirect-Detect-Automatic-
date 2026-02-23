@@ -7,6 +7,13 @@
     'use strict';
 
     const currentOrigin = window.location.origin;
+    
+    // OTIMIZAÇÃO: Cache de padrões suspeitos compilados uma vez
+    const suspiciousPatterns = [
+        /redirect/i, /redir/i, /clicktrack/i, /go\.php/i,
+        /track/i, /out\./i, /leave/i, /exit/i, /away/i,
+        /ad\./i, /ads\./i, /banner/i
+    ];
 
     // Comunicar bloqueios para o content script (isolated world)
     function notifyBlocked(to, type) {
@@ -28,18 +35,14 @@
         }
     }
 
+    // OTIMIZAÇÃO: Cache padrões em vez de recompilar
     function isSuspiciousRedirect(url) {
         if (!url) return false;
         try {
             const target = new URL(url, window.location.href);
             // Cross-origin é suspeito
             if (target.origin !== currentOrigin) return true;
-            // URLs com padrões de redirect
-            const suspiciousPatterns = [
-                /redirect/i, /redir/i, /clicktrack/i, /go\.php/i,
-                /track/i, /out\./i, /leave/i, /exit/i, /away/i,
-                /ad\./i, /ads\./i, /banner/i
-            ];
+            // URLs com padrões de redirect - usar cache
             return suspiciousPatterns.some(p => p.test(target.href));
         } catch {
             return false;
