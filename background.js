@@ -4,20 +4,32 @@
 // ============================================================
 
 // Estado da extensão
-let isEnabled = true;
+let isEnabled = false;
 let sessionBlocked = 0;
 const tabOriginalUrls = new Map();
 const recentBlocks = [];
 const MAX_RECENT_BLOCKS = 50;
 
+// ---- Carregar estado do storage na inicialização ----
+async function initializeState() {
+  const data = await chrome.storage.local.get(['enabled', 'sessionBlocked']);
+  isEnabled = data.enabled === true; // Só ativa se explicitamente true no storage
+  sessionBlocked = data.sessionBlocked || 0;
+  updateBadge();
+}
+
+// Inicializar imediatamente quando o service worker inicia
+initializeState();
+
 // ---- Inicialização ----
 chrome.runtime.onInstalled.addListener(async () => {
   await chrome.storage.local.set({
-    enabled: true,
+    enabled: false,
     totalBlocked: 0,
     sessionBlocked: 0,
     recentBlocks: []
   });
+  isEnabled = false;
 
   // Registrar content_main.js no MAIN world para interceptar JS da página
   try {
@@ -41,10 +53,22 @@ chrome.runtime.onInstalled.addListener(async () => {
 
 chrome.runtime.onStartup.addListener(async () => {
   const data = await chrome.storage.local.get(['enabled']);
-  isEnabled = data.enabled !== false;
+  isEnabled = data.enabled === true;
   sessionBlocked = 0;
   await chrome.storage.local.set({ sessionBlocked: 0 });
   updateBadge();
+});
+
+// ---- Sincronizar estado quando o storage mudar ----
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === 'local' && changes.enabled) {
+    isEnabled = changes.enabled.newValue === true;
+    updateBadge();
+  }
+  if (areaName === 'local' && changes.sessionBlocked) {
+    sessionBlocked = changes.sessionBlocked.newValue || 0;
+    updateBadge();
+  }
 });
 
 // ---- Badge do ícone ----

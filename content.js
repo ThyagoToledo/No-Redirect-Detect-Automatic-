@@ -6,7 +6,7 @@
 (function () {
     'use strict';
 
-    let isEnabled = true;
+    let isEnabled = false;
 
     // Verificar se a extensão está ativa
     try {
