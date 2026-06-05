@@ -1,7 +1,7 @@
 # No Redirect (Detect Automatic)
 
 <p align="center">
-  <img src="icons/Logo.png" alt="No Redirect Detect Automatic Logo" width="250px" style="border-radius: 24px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);" />
+  <img src="icons/Logo.png" alt="No Redirect Detect Automatic Logo" width="350px" style="border-radius: 24px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);" />
 </p>
 
 <p align="center">
